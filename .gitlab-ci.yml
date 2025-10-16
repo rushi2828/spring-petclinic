@@ -1,0 +1,94 @@
+stages:
+  - build
+  - test
+  - docker
+  - update-helm
+
+variables:
+  APP_NAME: petclinic
+  IMAGE_NAME: rushi2323/petclinic-app
+  IMAGE_TAG: git-${CI_COMMIT_SHORT_SHA}
+  HELM_REPO_URL: https://gitlab.com/rushimane2606-group/monitoring-all-tools.git
+  HELM_CHART_PATH: charts/petclinic
+  GIT_AUTHOR_NAME: "GitLab CI"
+  GIT_AUTHOR_EMAIL: "ci@gitlab.com"
+
+# ---------------------------
+# BUILD SPRING BOOT APP
+# ---------------------------
+build_app:
+  stage: build
+  image: maven:3.9.6-eclipse-temurin-17
+  script:
+    - mvn clean package -DskipTests
+  artifacts:
+    paths:
+      - target/*.jar
+  only:
+    - main
+    - test
+    - dev
+
+# ---------------------------
+# RUN TESTS
+# ---------------------------
+unit_tests:
+  stage: test
+  image: maven:3.9.6-eclipse-temurin-17
+  script:
+    - mvn test
+  only:
+    - main
+    - test
+    - dev
+
+# ---------------------------
+# BUILD & PUSH DOCKER IMAGE
+# ---------------------------
+docker_build_push:
+  stage: docker
+  image: docker:27.0.3
+  services:
+    - docker:dind
+  variables:
+    DOCKER_DRIVER: overlay2
+  script:
+    - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+    - docker build -t $IMAGE_NAME:$IMAGE_TAG .
+    - docker push $IMAGE_NAME:$IMAGE_TAG
+  only:
+    - main
+    - test
+    - dev
+
+# ---------------------------
+# UPDATE HELM REPO (GitOps)
+# ---------------------------
+update_helm_values:
+  stage: update-helm
+  image: mikefarah/yq:4.40.7
+  before_script:
+    - apk add git
+    - git config --global user.name "$GIT_AUTHOR_NAME"
+    - git config --global user.email "$GIT_AUTHOR_EMAIL"
+  script:
+    - git clone $HELM_REPO_URL helm-repo
+    - cd $HELM_CHART_PATH
+    # Choose which values file to update based on branch
+    - |
+      if [[ "$CI_COMMIT_BRANCH" == "dev" ]]; then
+        FILE="values-test.yaml"
+      elif [[ "$CI_COMMIT_BRANCH" == "main" ]]; then
+        FILE="values-prod.yaml"
+      else
+        FILE="values-test.yaml"
+      fi
+    - echo "🔧 Updating $FILE with tag $IMAGE_TAG"
+    - yq e -i ".image.repository = \"$IMAGE_NAME\"" $FILE
+    - yq e -i ".image.tag = \"$IMAGE_TAG\"" $FILE
+    - git add $FILE
+    - git commit -m "🔄 Update image tag to $IMAGE_TAG from ${CI_PROJECT_NAME} [$CI_COMMIT_BRANCH]"
+    - git push https://oauth2:${GITLAB_TOKEN}@$CI_SERVER_HOST/rushimane2606-group/monitoring-all-tools.git HEAD:main
+  only:
+    - dev
+    - main

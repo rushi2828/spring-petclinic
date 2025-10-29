@@ -11,9 +11,9 @@ variables:
   GIT_AUTHOR_NAME: "GitLab CI"
   GIT_AUTHOR_EMAIL: "ci@gitlab.com"
 
-# ------------------------
+# ----------------------------
 # 1) Build the Spring Boot JAR
-# ------------------------
+# ----------------------------
 build:
   stage: build
   image: maven:3.9.6-eclipse-temurin-17
@@ -26,9 +26,9 @@ build:
     - dev   # dev branch -> will map to test cluster
     - main  # main branch -> will map to prod cluster
 
-# ------------------------
+# ----------------------------
 # 2) Build & push Docker image
-# ------------------------
+# ----------------------------
 docker_build:
   stage: docker
   image: docker:24.0.2
@@ -45,9 +45,9 @@ docker_build:
     - dev
     - main
 
-# ------------------------
+# ----------------------------
 # 3) Update Helm values in the GitOps repo (rushi2606) so ArgoCD can deploy
-# ------------------------
+# ----------------------------
 update_helm_values:
   stage: update-values
   image: alpine:3.18
